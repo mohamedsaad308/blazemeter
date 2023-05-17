@@ -1,44 +1,47 @@
 import requests
 import json
 import sys
+import boto3
 
 
-# Email to be deleted
-EMAIL = "salahsaad308@gmail.com"
+def get_ssm_parameter(parameter_name):
+    ssm = boto3.client("ssm")
+    response = ssm.get_parameter(Name=parameter_name, WithDecryption=True)
+    return response["Parameter"]["Value"]
 
-# API endpoint URLs
-users_url = "https://a.blazemeter.com/api/v4/accounts/1590235/users"
-disable_url = f"https://a.blazemeter.com/api/v4/accounts/1590235/users/"
 
-# Request headers
-headers = {
-    "Accept": "application/json",
-    "Content-Type": "application/json",
-    "Authorization": "Basic YmRlNDYzOTYxN2UxNTEwNGM0NmMwODA1OmU3MWU1OGU0ZDZiY2I5OWE2ODFhMjEzZTczZWMwYmZkMTJjOGY2NmVhNTM4NDgzZjNiYjA1ZTk0NjlmYjQ4MjE4ODdkNWE0Yw==",
-}
+def disable_email(email):
+    blazmeter_account_id = get_ssm_parameter("blazmeterAccountId")
+    blazemeter_key = get_ssm_parameter("blazemeterKey")
 
-# Send GET request to retrieve users
-response = requests.get(users_url, headers=headers)
-result = response.json()["result"]
+    users_api = f"https://a.blazemeter.com/api/v4/accounts/{blazmeter_account_id}/users"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {blazemeter_key}",
+    }
 
-# Find the email ID to disable
-email_id = next(
-    (
-        record["id"]
-        for record in result
-        if record["email"] == EMAIL and record["enabled"]
-    ),
-    None,
-)
+    response = requests.get(users_api, headers=headers)
+    result = response.json()["result"]
 
-if not email_id:
-    print("This email does not exist or is already disabled!")
-    sys.exit()
+    email_id = next(
+        (record["id"] for record in result if record["email"] == email and record["enabled"]),
+        None,
+    )
 
-# Send PUT request to disable the email
-disable_url += str(email_id)
-payload = json.dumps({"enabled": False})
+    if not email_id:
+        print(f"The email '{email}' does not exist or is already disabled!")
+        sys.exit()
 
-response = requests.put(disable_url, headers=headers, data=payload)
+    disable_url = f"{users_api}/{email_id}"
+    payload = json.dumps({"enabled": False})
 
-print(response.json())
+    response = requests.put(disable_url, headers=headers, data=payload)
+
+    if response.ok:
+        print(f"The email '{email}' was deleted successfully!")
+
+
+if __name__ == "__main__":
+    EMAIL = "salahsaad308@gmail.com"
+    disable_email(EMAIL)
